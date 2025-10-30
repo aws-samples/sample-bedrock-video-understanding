@@ -105,6 +105,8 @@ def bedrock_converse(config, max_retries=3, retry_delay=1, image_s3_bucket=None,
     inference_config = config.get("inferConfig")
     if not inference_config:
         inference_config = {"maxTokens": 500, "topP": 0.1, "temperature": 0.3}
+    if "modelId" in config and "anthropic" in config["modelId"]:
+        del inference_config["topP"]
 
     retries = 0
     while retries < max_retries:

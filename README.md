@@ -146,8 +146,8 @@ If your CloudShell instance has older dependency libraries like npm or pip, it m
 The solution requires AWS AI and Generative AI services, including Amazon Bedrock, Amazon Rekognition and Amazon Transcribe, which are available in certain regions. Please choose one of the below AWS regions to deploy the CDK package.
 
 |||||
----------- | ---------- | ---------- | ---------- |
-US | us-east-1 (N. Virginia) | us-west-2 (Oregon) ||
+---------- | ---------- |
+US | us-east-1 (N. Virginia) |
 
 ### Deployment Steps
 1. Clone the source code from GitHub repo 
