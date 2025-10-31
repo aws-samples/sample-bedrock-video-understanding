@@ -2,6 +2,10 @@
 
 Understanding video content is inherently complex, as it combines visual, auditory, and temporal information that must be analyzed together for meaningful insights. Different use cases — such as media scene analysis, ad break detection, IP camera tracking, or social media moderation — often require distinct workflows with varying cost, accuracy, and latency trade-offs.
 
+An increasing number of multimodal understanding models and features are now available on Amazon Bedrock.
+
+![mm-understanding-bedrock](./assets/mm-understanding-bedrock.png)
+
 This video understanding tool allows you to upload videos, experiment with different analysis pipelines and foundation models on Amazon Bedrock, and compare performance across configurations. It streamlines the complex process of extracting reliable metadata from videos and provides an intuitive interface to access the results — either through the UI or programmatically — for further analysis.
 
 ## 📚 Table of Contents
@@ -99,12 +103,7 @@ The tool handles upstream video analysis, extracting metadata for deeper insight
 ## Deployment Instruction
 ### Prerequisites
 
-- If you don't have the AWS account administrator access, ensure your [IAM](https://aws.amazon.com/iam/) role/user has permissions to create and manage the necessary resources and components for this solution.
-- In Amazon Bedrock, make sure you have access to the required models: 
-    - Nova multimodal embedding V1
-    - Nova Lite 1.0
-    - Nova Pro 1.0
-    - Nova Premier 1.0
+- If you don't have the AWS account administrator access, ensure your [IAM](https://aws.amazon.com/iam/) role/user has permissions to create and manage the necessary resources and components for this solution.eiifccv
 
 #### Install environment dependencies and set up authentication
 
@@ -146,8 +145,9 @@ If your CloudShell instance has older dependency libraries like npm or pip, it m
 The solution requires AWS AI and Generative AI services, including Amazon Bedrock, Amazon Rekognition and Amazon Transcribe, which are available in certain regions. Please choose one of the below AWS regions to deploy the CDK package.
 
 |||||
----------- | ---------- |
-US | us-east-1 (N. Virginia) |
+---------- | ---------- | ---------- | ---------- |
+US | us-east-1 (N. Virginia) |||
+
 
 ### Deployment Steps
 1. Clone the source code from GitHub repo 
@@ -161,14 +161,9 @@ cd sample-bedrock-video-understanding
 
 Set environment variables as input parameters for the CDK deployment package:
 
-CDK_INPUT_USER_EMAILS (Optional): Email address(es) for login to the web portal. They will receive temporary passwords.
+CDK_INPUT_USER_EMAILS: Email address(es) for login to the web portal. They will receive temporary passwords.
 ```
 export CDK_INPUT_USER_EMAILS=<EMAILS_SPLIT_BY_COMMA>
-```
-
-CDK_INPUT_USER_NAME (Optional): Username for logging into the frontend web app. A password is auto-generated and shown in the CloudFormation/CDK output, bypassing Cognito’s email verification flow. Ideal for workshop setups requiring lightweight user authentication.
-```
-export CDK_INPUT_USER_NAME=<USER_NAME>
 ```
 
 Update the values with your target AWS account ID and the region where you intend to deploy the demo application.
@@ -190,9 +185,7 @@ Once the deployment completes, you can find the website URL in the bash console.
 ### Running the Guidance
 - If you provided one or more email addresses through the environment variable `CDK_INPUT_USER_EMAILS` during setup, an email containing a username and temporary password will be sent to those addresses as part of the deployment process. Users can use these credentials to sign in to the web portal.
 
-- If you instead specified a username using `CDK_INPUT_USER_NAME`, you can log in to the web portal using that username and the password displayed in the CloudFormation output. This method bypasses Cognito’s email notification and password reset flow, making it suitable for workshop scenarios.
-
-- If neither `CDK_INPUT_USER_EMAILS` nor `CDK_INPUT_USER_NAME` was set, you will need to manually create a user by navigating to the Cognito console and adding a user to the **bedrock-mm-user-pool**.
+- If `CDK_INPUT_USER_EMAILS` was set, you will need to manually create a user by navigating to the Cognito console and adding a user to the **bedrock-mm-user-pool**.
 
 ### Cleanup
 

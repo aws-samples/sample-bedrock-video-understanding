@@ -233,7 +233,7 @@ class VideoSearch extends React.Component {
                 <Alert statusIconAriaLabel="Warning" type="warning">
                 {this.state.alert}
                 </Alert>:<div/>}
-                    <div className='title'>TwelveLabs - Merango Embed 2.7
+                    <div className='title'>TwelveLabs - Marengo Embed 2.7
                         &nbsp;&nbsp;&nbsp;<Link onClick={()=>{this.setState({showDocModal: true})}}><Icon name="support"></Icon></Link>
                     </div>
                     <div className='globalaction'>
