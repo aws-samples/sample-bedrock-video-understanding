@@ -1,5 +1,5 @@
-import React, { Component } from 'react';
-import { ButtonDropdown, ColumnLayout, Textarea, Button, Slider, Table, Select, Input, Box, SpaceBetween, Form, ExpandableSection, Container, Header } from '@cloudscape-design/components';
+import { Component } from 'react';
+import { Multiselect, ColumnLayout, Textarea, Button, Slider, Select, Input, SpaceBetween, ExpandableSection, Container } from '@cloudscape-design/components';
 import FrameBasedConfig from '../../resources/clip-based-config.json'
 import './videoPromptConfig.css';
 
@@ -12,9 +12,11 @@ class VideoFramePromptConfig extends Component {
             configs: [],
             
             // Current editing
-            showEditConfig: true,
+            showEditConfig: false,
+            currentEditingConfigId: null, // Track which config is being edited
             name: null,
             selectedPromptId: null,
+            selectedPromptOptions: [],
             modelIdOption: null,
             prompt: null,
             toolConfig: null,
@@ -29,23 +31,14 @@ class VideoFramePromptConfig extends Component {
     }   
 
     getConfigs() {
+        // Configs are already auto-saved, just return them
         var configs = this.state.configs;
-        var warns = [];
-        if (this.state.showEditConfig === true) {
-            // Add and validate the last input
-            var result = this.constructConfig();
-            warns = result.warnings;
-            if (warns.length === 0) {
-                configs.push(result.config);
-                this.setState({configs: configs});
-            }
-        }
-
-        // remove id field
-        configs = configs.map(({ id, ...rest }) => rest);
+        
+        // remove id and sourcePromptId fields
+        configs = configs.map(({ id, sourcePromptId, ...rest }) => rest);
         return {
             configs: configs,
-            warnings: warns
+            warnings: []
         };
     }
 
@@ -129,94 +122,221 @@ class VideoFramePromptConfig extends Component {
         return null;
     }
 
+    updateConfigInList() {
+        // Use setState with updater function to ensure we have the latest state
+        this.setState((prevState) => {
+            if (!prevState.currentEditingConfigId) return null;
+
+            const configIndex = prevState.configs.findIndex(c => c.id === prevState.currentEditingConfigId);
+            
+            if (configIndex === -1) return null;
+            
+            const newConfigs = [...prevState.configs];
+            let toolConfigParsed = null;
+            
+            if (prevState.toolConfig) {
+                try {
+                    toolConfigParsed = JSON.parse(prevState.toolConfig);
+                } catch (e) {
+                    // Invalid JSON, keep as null
+                }
+            }
+            
+            newConfigs[configIndex] = {
+                ...newConfigs[configIndex],
+                name: prevState.name,
+                modelId: prevState.modelIdOption?.value,
+                prompt: prevState.prompt,
+                toolConfig: toolConfigParsed,
+                inferConfig: {
+                    maxTokens: prevState.maxTokens,
+                    topP: prevState.topP,
+                    temperature: prevState.temperature
+                }
+            };
+            
+            return { configs: newConfigs };
+        });
+    }
+
   render() {
     return  <div className="promptconfig">
-        {this.state.configs?.length > 0  &&
-                <div>
-                    <Table
-                        renderAriaLive={({
-                            firstIndex,
-                            lastIndex,
-                            totalItemsCount
-                        }) =>
-                            `Displaying items ${firstIndex} to ${lastIndex} of ${totalItemsCount}`
-                        }
-                        columnDefinitions={[
-                            {
-                                id: "name",
-                                header: "Name",
-                                cell: item => item.name || "-",
-                                sortingField: "name",
-                                isRowHeader: true,
-                            },
-                            {
-                                id: "modelId",
-                                header: "Model Id",
-                                cell: item => item.modelId || "-",
-                                sortingField: "modelId"
-                            }
-                            ,
-                            {
-                                id: "action",
-                                header: "",
-                                cell: item => (
-                                    <div>
-                                    <Button iconName="edit" onClick={()=>{
-                                        // Edit prompt config
-                                        this.setState({
-                                            name: item.name,
-                                            prompt: item.prompt,
-                                            toolConfig: item.toolConfig? JSON.stringify(item.toolConfig,null,4): null,
-                                            showEditConfig: true,
-                                            modelIdOption: this.constructModelOption(item.modelId)
-                                        })
-                                        var configs = this.state.configs;
-                                        const newConfigs = configs.filter(c => c.id !== item.id);
-                                        this.setState({configs: newConfigs});
-                                    }} /> &nbsp;
-                                    <Button iconName="remove" onClick={()=> 
-                                        {
-                                            var configs = this.state.configs;
-                                            const newConfigs = configs.filter(c => c.id !== item.id);
-                                            this.setState({configs: newConfigs});
+                <div className="multiselect-container">
+                    <Multiselect
+                    selectedOptions={this.state.selectedPromptOptions}
+                    onChange={({ detail }) => {
+                        const previousOptions = this.state.selectedPromptOptions;
+                        this.setState({ selectedPromptOptions: detail.selectedOptions });
+                        
+                        // Find newly selected prompts
+                        const newlySelected = detail.selectedOptions.filter(
+                            opt => !previousOptions.find(prev => prev.value === opt.value)
+                        );
+                        
+                        // Find removed prompts
+                        const removed = previousOptions.filter(
+                            prev => !detail.selectedOptions.find(opt => opt.value === prev.value)
+                        );
+                        
+                        // Auto-save all newly selected prompts to configs
+                        if (newlySelected.length > 0) {
+                            const newConfigs = [...this.state.configs];
+                            
+                            newlySelected.forEach(option => {
+                                const prompt = this.state.sampleConfigs.find(item => item.id === option.value);
+                                // Check if config already exists by sourcePromptId
+                                if (prompt && !newConfigs.find(c => c.sourcePromptId === option.value)) {
+                                    const config = {
+                                        id: crypto.randomUUID(),
+                                        sourcePromptId: option.value, // Track which prompt this came from
+                                        name: prompt.name,
+                                        modelId: prompt.model_id,
+                                        prompt: prompt.prompt,
+                                        toolConfig: prompt.toolConfig,
+                                        inferConfig: {
+                                            maxTokens: prompt.inferConfig?.maxTokens || this.state.maxTokens,
+                                            topP: prompt.inferConfig?.topP || this.state.topP,
+                                            temperature: prompt.inferConfig?.temperature || this.state.temperature
                                         }
-                                    } />
-                                    </div>
-                                ),
+                                    };
+                                    newConfigs.push(config);
+                                }
+                            });
+                            
+                            this.setState({ configs: newConfigs });
+                            
+                            // Load the first newly selected prompt into the form for viewing
+                            const firstNewOption = newlySelected[0];
+                            const prompt = this.state.sampleConfigs.find(item => item.id === firstNewOption.value);
+                            if (prompt) {
+                                const savedConfig = newConfigs.find(c => c.sourcePromptId === firstNewOption.value);
+                                this.setState({
+                                    showEditConfig: true,
+                                    currentEditingConfigId: savedConfig?.id,
+                                    name: prompt.name,
+                                    modelIdOption: this.constructModelOption(prompt.model_id),
+                                    prompt: prompt.prompt,
+                                    toolConfig: prompt.toolConfig ? JSON.stringify(prompt.toolConfig, null, 4) : null,
+                                    maxTokens: prompt.inferConfig?.maxTokens || this.state.maxTokens,
+                                    topP: prompt.inferConfig?.topP || this.state.topP,
+                                    temperature: prompt.inferConfig?.temperature || this.state.temperature
+                                });
                             }
-                        ]}
-                        items={this.state.configs}
-                        loadingText="Loading prompts"
-                        sortingDisabled
-                    />
-                    <br/>
-                </div>
-                }
-                <ButtonDropdown
-                    onItemClick={({ detail }) =>  {
-                        this.setFramePrompt(detail.id);
-                        this.setState({showEditConfig: true});
+                        }
+                        
+                        // Remove deselected prompts from configs
+                        if (removed.length > 0) {
+                            const removedPromptIds = removed.map(opt => opt.value);
+                            const newConfigs = this.state.configs.filter(config => {
+                                return !removedPromptIds.includes(config.sourcePromptId);
+                            });
+                            
+                            // If we removed the currently editing config, hide the edit form
+                            const removedCurrentConfig = removedPromptIds.includes(
+                                this.state.configs.find(c => c.id === this.state.currentEditingConfigId)?.sourcePromptId
+                            );
+                            
+                            this.setState({ 
+                                configs: newConfigs,
+                                showEditConfig: removedCurrentConfig ? false : this.state.showEditConfig,
+                                currentEditingConfigId: removedCurrentConfig ? null : this.state.currentEditingConfigId
+                            });
+                        }
+                        
+                        // Hide controls if no options are selected
+                        if (detail.selectedOptions.length === 0) {
+                            this.setState({ 
+                                showEditConfig: false,
+                                currentEditingConfigId: null
+                            });
+                        }
                     }}
-                    items={this.state.sampleConfigs?.map(item => {
-                        return {
-                            text: item.name,
-                            id: item.id,
-                            itemType: "checkbox",
-                            checked: item.id == this.state.selectedPromptId
-                        };
-                    })}>Add a new prompt
-                </ButtonDropdown>
+                    options={this.state.sampleConfigs?.map(item => ({
+                        label: item.name,
+                        value: item.id
+                    }))}
+                    placeholder="Add a new prompt"
+                    filteringType="auto"
+                    hideTokens={true}
+                    />
+                    {this.state.selectedPromptOptions.length > 0 && (
+                        <div style={{ marginTop: '10px' }}>
+                            <SpaceBetween direction="horizontal" size="xs">
+                                {this.state.selectedPromptOptions.map((option, index) => {
+                                    // Find config by sourcePromptId
+                                    const savedConfig = this.state.configs.find(c => c.sourcePromptId === option.value);
+                                    
+                                    // Display the current saved name, not the original option label
+                                    const displayLabel = savedConfig ? savedConfig.name : option.label;
+                                    
+                                    return (
+                                        <div key={option.value} className="token-item">
+                                            <Button
+                                                variant="inline-link"
+                                                onClick={() => {
+                                                    if (savedConfig) {
+                                                        this.setState({
+                                                            showEditConfig: true,
+                                                            currentEditingConfigId: savedConfig.id,
+                                                            name: savedConfig.name,
+                                                            modelIdOption: this.constructModelOption(savedConfig.modelId),
+                                                            prompt: savedConfig.prompt,
+                                                            toolConfig: savedConfig.toolConfig ? JSON.stringify(savedConfig.toolConfig, null, 4) : null,
+                                                            maxTokens: savedConfig.inferConfig?.maxTokens || this.state.maxTokens,
+                                                            topP: savedConfig.inferConfig?.topP || this.state.topP,
+                                                            temperature: savedConfig.inferConfig?.temperature || this.state.temperature
+                                                        });
+                                                    }
+                                                }}
+                                            >
+                                                {displayLabel}
+                                            </Button>
+                                            <Button
+                                                iconName="close"
+                                                variant="inline-icon"
+                                                onClick={() => {
+                                                    const newOptions = [...this.state.selectedPromptOptions];
+                                                    newOptions.splice(index, 1);
+                                                    
+                                                    // Check if we're removing the currently editing config
+                                                    const removingCurrentConfig = savedConfig && savedConfig.id === this.state.currentEditingConfigId;
+                                                    
+                                                    this.setState({ selectedPromptOptions: newOptions });
+                                                    
+                                                    // Remove from configs by sourcePromptId
+                                                    if (savedConfig) {
+                                                        const newConfigs = this.state.configs.filter(config => config.sourcePromptId !== option.value);
+                                                        this.setState({ 
+                                                            configs: newConfigs,
+                                                            // Hide controls if we removed the current config or if no options left
+                                                            showEditConfig: (removingCurrentConfig || newOptions.length === 0) ? false : this.state.showEditConfig,
+                                                            currentEditingConfigId: (removingCurrentConfig || newOptions.length === 0) ? null : this.state.currentEditingConfigId
+                                                        });
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                    );
+                                })}
+                            </SpaceBetween>
+                        </div>
+                    )}
+                </div>
                 <br/>
                 {this.state.warnings.length > 0 && this.state.warnings.map(w=> {return <div className='warnings'>{w}</div>})}
                 {this.state.showEditConfig &&
                 <div className='prompt'>
                     <div className='label'>Display name</div>
                     <Input value={this.state.name} onChange={
-                        ({detail})=>this.setState({name: detail.value})
+                        ({detail})=> {
+                            this.setState({name: detail.value}, () => this.updateConfigInList());
+                        }
                     }></Input>
                     <div className='label'>Select a model</div>
                     <Select selectedOption={this.state.modelIdOption}
-                        onChange={({ detail }) => {this.setState({modelIdOption: detail.selectedOption})}}
+                        onChange={({ detail }) => {
+                            this.setState({modelIdOption: detail.selectedOption}, () => this.updateConfigInList());
+                        }}
                         options={this.state.models.map(item => {
                             return {
                                 label: item.name,
@@ -228,11 +348,13 @@ class VideoFramePromptConfig extends Component {
                         ({detail})=>{
                                 this.setState({
                                     prompt: detail.value,
-                                });
+                                }, () => this.updateConfigInList());
                         }                                                
                     }></Textarea>
                     <ExpandableSection headerText="Tool Configuration">
-                        <Textarea rows={10} onChange={({ detail }) => this.setState({toolConfig: detail.value})} value={this.state.toolConfig}></Textarea>
+                        <Textarea rows={10} onChange={({ detail }) => {
+                            this.setState({toolConfig: detail.value}, () => this.updateConfigInList());
+                        }} value={this.state.toolConfig}></Textarea>
                     </ExpandableSection>
                     <br/>
                     <ExpandableSection headerText="Inference Configuration">
@@ -240,7 +362,9 @@ class VideoFramePromptConfig extends Component {
                             <Container>
                                 <div className='label'>Maximum Output Tokens</div>
                                 <Slider
-                                    onChange={({ detail }) => this.setState({maxTokens: detail.value})}
+                                    onChange={({ detail }) => {
+                                        this.setState({maxTokens: detail.value}, () => this.updateConfigInList());
+                                    }}
                                     value={this.state.maxTokens}
                                     max={32000}
                                     min={0}
@@ -250,7 +374,9 @@ class VideoFramePromptConfig extends Component {
                             <Container>
                                 <div className='label'>Top P</div>
                                 <Slider
-                                    onChange={({ detail }) => this.setState({topP: detail.value})}
+                                    onChange={({ detail }) => {
+                                        this.setState({topP: detail.value}, () => this.updateConfigInList());
+                                    }}
                                     value={this.state.topP}
                                     max={1}
                                     min={0}
@@ -260,7 +386,9 @@ class VideoFramePromptConfig extends Component {
                             <Container>
                                 <div className='label'>Temperature</div>
                                 <Slider
-                                    onChange={({ detail }) => this.setState({temperature: detail.value})}
+                                    onChange={({ detail }) => {
+                                        this.setState({temperature: detail.value}, () => this.updateConfigInList());
+                                    }}
                                     value={this.state.temperature}
                                     max={1}
                                     min={0}
@@ -270,25 +398,7 @@ class VideoFramePromptConfig extends Component {
 
                         </ColumnLayout>
                     </ExpandableSection>
-                    <div className='action'>
-                        <Button formAction="none" variant="link" onClick={()=> this.setState({
-                            showEditConfig: false,
-                            warnings: []
-                        })}>Cancel</Button>
-                        <Button variant="primary" onClick={()=>{
-                            var {config, warnings} = this.constructConfig();
-                                if (warnings.length === 0) {
-                                    var configs = this.state.configs;
-                                    configs.push(config);    
-                                    this.setState({
-                                        configs: configs,
-                                        showEditConfig: false,
-                                    }) ;
-                                    this.setFramePrompt("default");
-                                }
-                            }
-                        }>Save Configuration</Button>
-                    </div>
+
                 </div>}
             </div>
   };

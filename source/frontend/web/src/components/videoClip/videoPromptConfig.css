@@ -11,7 +11,19 @@
     font-weight: bold;
 }
 
-.promptconfig .prompt {
+.promptconfig .token-item {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 2px 4px 2px 8px;
+    background-color: #f9fafb;
+    gap: 4px;
+}
+
+.promptconfig .token-item:hover {
+    background-color: #f3f4f6;
+    border-color: #9ca3af;
 }
 
 .promptconfig .prompt .label {

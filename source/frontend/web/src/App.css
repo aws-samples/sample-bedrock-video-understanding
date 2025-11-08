@@ -43,6 +43,13 @@ body, html {
   position: absolute;
   bottom: 50px;
 }
+
+.app .sidemenu .settings-icon {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: pointer;
+}
 .app .sidemenu .item{
   padding:10px;
   padding:5px 15px 5px 15px;

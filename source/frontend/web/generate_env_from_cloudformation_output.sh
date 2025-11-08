@@ -2,16 +2,9 @@
 # Usage: ./generate_env.sh <STACK_NAME>
 # Example: ./generate_env.sh MyAppStack
 
-STACK_NAME=$1
-
-if [ -z "$STACK_NAME" ]; then
-  echo "Usage: $0 <STACK_NAME>"
-  exit 1
-fi
-
 # Get stack outputs as JSON
 OUTPUTS=$(aws cloudformation describe-stacks \
-  --stack-name "$STACK_NAME" \
+  --stack-name "BedrockMmRootStack" \
   --query "Stacks[0].Outputs" \
   --output json)
 
@@ -47,6 +40,7 @@ REACT_APP_COGNITO_IDENTITY_POOL_ID="${COGNITO_IDENTITY_POOL_ID}"
 REACT_APP_AGENTCORE_RUNTIME_ARN="${AGENTCORE_RUNTIME_ARN}"
 REACT_APP_AGENTCORE_RUNTIME_ENDPOINT_NAME="DEFAULT"
 REACT_APP_READONLY_DISPLAY_MENUS="frame,clip,novamme,tlabsmme,agent"
+REACT_APP_SHOW_SETTINGS_ICON="true"
 EOF
 
 echo ".env file generated successfully:"
