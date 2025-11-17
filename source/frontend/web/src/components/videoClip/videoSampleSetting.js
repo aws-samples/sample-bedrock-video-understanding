@@ -14,7 +14,7 @@ class VideoSampleSetting extends Component {
             
             // shot level
             enableShotAnalysis: true,
-            enableEmbedding: true,
+            enableEmbedding: false,
             embedDim: ClipBasedConfig.default_embed_dimension,
             shotConfigs: null,
 
