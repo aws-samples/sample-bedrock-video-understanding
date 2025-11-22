@@ -9,6 +9,8 @@ import TlabsMmeVideoMain from "./components/tlabsMme/videoMain";
 import AgentMain from "./components/agent/agentMain";
 import "./App.css";
 import { FetchPost } from "./resources/data-provider";
+import seagateLogo from "./static/Seagate_logo.svg";
+import bedrockLogo from "./static/bedrock_logo.png";
 
 const ITEMS = [
   { type: "link", text: "Frame Based", id: "frame", href: "#/frame" },
@@ -120,10 +122,16 @@ class App extends Component {
       <div className="app">
         {displayTopMenu && (
           <div className="topmenu">
-            <div className="title">Bedrock Video Understanding</div>
-            <div className="user" title={user.email}>
-              <Icon name="user-profile-active"></Icon>&nbsp;&nbsp;
-              {user.username}
+            <div className="header-left">
+              <img src={seagateLogo} alt="Seagate" className="logo seagate-logo" />
+              <div className="title"><strong>Bedrock Video Understanding</strong></div>
+            </div>
+            <div className="header-right">
+              <img src={bedrockLogo} alt="Amazon Bedrock" className="logo bedrock-logo" />
+              <div className="user" title={user.email}>
+                <Icon name="user-profile-active"></Icon>&nbsp;&nbsp;
+                {user.username}
+              </div>
             </div>
           </div>
         )}

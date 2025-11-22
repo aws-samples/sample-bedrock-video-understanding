@@ -12,19 +12,48 @@ body, html {
 .app .topmenu {
   background-color: white;
   color: rgb(70, 70, 70);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.app .topmenu .header-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.app .topmenu .header-right {
+  display: flex;
+  align-items: center;
+  gap: 15px;
 }
 
 .app .topmenu .title {
   font-size: large;
-  padding: 10px 10px 10px 20px;
   color: gray;
+  margin: 0;
 }
 
 .app .topmenu .user {
   font-size: small;
-  display: block;
-  float: right;
-  margin: -30px 60px 0px 0px;
+  display: flex;
+  align-items: center;
+}
+
+.app .topmenu .logo {
+  height: 40px;
+  width: auto;
+}
+
+.app .topmenu .seagate-logo {
+  height: 35px;
+}
+
+.app .topmenu .bedrock-logo {
+  height: 30px;
 }
 
 .app .sidemenu {

@@ -160,9 +160,9 @@ The tool handles upstream video analysis, extracting metadata for deeper insight
 
 #### Install environment dependencies and set up authentication
 
-<details><summary>
-:bulb: Skip if using CloudShell or AWS services that support bash commands from the same account (e.g., Cloud9). Required for self-managed environments like local desktops.
-</summary>
+> **⚠️ Important:** Due to disk space limitations in AWS CloudShell, we recommend running the deployment from your local laptop/desktop. CloudShell may run out of space during the build process.
+
+**Required dependencies:**
 
 - [ ] Install Node.js
 https://nodejs.org/en/download/
@@ -183,16 +183,15 @@ python -m ensurepip --upgrade
 pip install virtualenv
 ```
 
-
 - [ ] Setup the AWS CLI authentication
 ```sh
-aws configure                                                                     
- ```                      
-</details>
+aws configure
+```
 
-![Open CloudShell](./assets/cloudshell.png)
-
-If your CloudShell instance has older dependency libraries like npm or pip, it may cause deployment errors. To resolve this, click 'Actions' and choose 'Delete AWS CloudShell Home Directory' to start a fresh instance.
+Verify your AWS credentials are configured:
+```sh
+aws sts get-caller-identity
+```
 
 #### Supported Regions
 The solution requires AWS AI and Generative AI services, including Amazon Bedrock, Amazon Rekognition and Amazon Transcribe, which are available in certain regions. Please choose one of the below AWS regions to deploy the CDK package.
@@ -225,11 +224,18 @@ export CDK_DEFAULT_ACCOUNT=<YOUR_ACCOUNT_ID>
 export CDK_DEFAULT_REGION=<YOUR_TARGET_REGION> (e.x, us-east-1)
 ```
 
-3. Run **deploy-cloudshell.sh** in CloudShell to deploy the application to your AWS account with the parameters defined in step 2.
+3. Run **deploy.sh** from your local terminal to deploy the application to your AWS account with the parameters defined in step 2.
 ```
 cd deployment
-bash ./deploy-cloudshell.sh
+bash ./deploy.sh
 ```
+
+4. (Optional) For quick frontend-only updates after initial deployment, use **update-frontend.sh**:
+```
+cd deployment
+bash ./update-frontend.sh
+```
+This is much faster (~2-3 minutes) than full redeployment (~5-10 minutes) when you only changed frontend code.
 
 ### Deployment Validation
 

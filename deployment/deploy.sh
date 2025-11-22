@@ -3,7 +3,7 @@
 # Check if running from deployment directory
 if [ ! -f "app.py" ] || [ ! -f "requirements.txt" ]; then
     echo "Error: This script must be run from the deployment directory."
-    echo "Please cd to the deployment directory and run: bash ./deploy-cloudshell.sh"
+    echo "Please cd to the deployment directory and run: bash ./deploy.sh"
     exit 1
 fi
 
@@ -31,8 +31,8 @@ sudo npm install aws-cdk
 # The CDK FrontendStack will rebuild it with correct environment variables
 echo "Building React frontend (initial build)..."
 cd ../source/frontend/web
-npm install
-npm run build
+npm install --silent
+npm run build --silent
 cd ../../../deployment
 
 # Create or reuse Python Virtual Environment
@@ -60,10 +60,18 @@ echo "Deploying CDK stack with parameters:"
 echo "  User Emails: ${CDK_INPUT_USER_EMAILS}"
 echo "  User Name: ${CDK_INPUT_USER_NAME}"
 
+# Force CDK to recognize source code changes by clearing cache
+echo "Clearing CDK cache to ensure latest source code is used..."
+rm -rf cdk.out/
+
 # Deploy CDK package - this step will launch one CloudFormation stack with three nested stacks for different sub-systems.
 # The FrontendStack will use CodeBuild to rebuild the React app with proper environment variables
 cdk deploy --parameters inputUserEmails=${CDK_INPUT_USER_EMAILS} --parameters inputUserName=${CDK_INPUT_USER_NAME} --requires-approval never --all
 
 echo "Deployment completed successfully!"
 echo "The frontend has been rebuilt with proper environment variables via CodeBuild."
-echo "You can find the website URL in the CloudFormation stack outputs."
+
+# Deploy frontend artifacts to web bucket
+echo "Deploying frontend to web bucket..."
+export CDK_DEFAULT_REGION=${CDK_DEFAULT_REGION}
+bash ./update-frontend.sh
