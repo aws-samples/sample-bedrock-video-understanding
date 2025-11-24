@@ -221,13 +221,16 @@ export CDK_INPUT_USER_EMAILS=<EMAILS_SPLIT_BY_COMMA>
 Update the values with your target AWS account ID and the region where you intend to deploy the demo application.
 ```
 export CDK_DEFAULT_ACCOUNT=<YOUR_ACCOUNT_ID>
-export CDK_DEFAULT_REGION=<YOUR_TARGET_REGION> (e.x, us-east-1)
 ```
 
-3. Run **deploy.sh** from your local terminal to deploy the application to your AWS account with the parameters defined in step 2.
+3. Run **deploy.sh** from your local terminal. We recommend setting the region inline to ensure it persists:
 ```
 cd deployment
-bash ./deploy.sh
+CDK_DEFAULT_REGION=<YOUR_TARGET_REGION> bash ./deploy.sh
+```
+Example:
+```bash
+CDK_DEFAULT_REGION=us-east-1 bash ./deploy.sh
 ```
 
 4. (Optional) For quick frontend-only updates after initial deployment, use **update-frontend.sh**:

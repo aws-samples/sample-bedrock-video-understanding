@@ -7,6 +7,7 @@ import ClipVideoMain from "./components/videoClip/videoMain";
 import NovaMmeVideoMain from "./components/novaMme/videoMain";
 import TlabsMmeVideoMain from "./components/tlabsMme/videoMain";
 import AgentMain from "./components/agent/agentMain";
+import DataGenerationMain from "./components/dataGeneration/dataMain";
 import "./App.css";
 import { FetchPost } from "./resources/data-provider";
 import seagateLogo from "./static/Seagate_logo.svg";
@@ -17,6 +18,7 @@ const ITEMS = [
   { type: "link", text: "Shot Based", id: "clip", href: "#/clip" },
   { type: "link", text: "Nova MME", id: "novamme", href: "#/novamme" },
   { type: "link", text: "TwelveLabs", id: "tlabsmme", href: "#/tlabsmme" },
+  { type: "link", text: "Data Generation", id: "datagen", href: "#/datagen" },
   { type: "link", text: "Chat with an agent", id: "agent", href: "#/agent" },
 ];
 
@@ -209,6 +211,11 @@ class App extends Component {
             />
           ) : currentPage === "tlabsmme" ? (
             <TlabsMmeVideoMain
+              cleanSelectionSignal={cleanSelectionSignal}
+              readOnlyUsers={this.getReadOnlyUsers()}
+            />
+          ) : currentPage === "datagen" ? (
+            <DataGenerationMain
               cleanSelectionSignal={cleanSelectionSignal}
               readOnlyUsers={this.getReadOnlyUsers()}
             />

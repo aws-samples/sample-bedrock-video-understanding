@@ -48,6 +48,7 @@ class ServicePreStack(NestedStack):
                 allowed_origins=["*"],
                 allowed_headers=["*"],
                 exposed_headers=["ETag"],
+                max_age=3000
             )])
         self.s3_data_bucket_name = s3_data_bucket.bucket_name
 

@@ -2,6 +2,7 @@ import React, {createRef} from 'react';
 import './videoSearch.css'
 import { Button, Link, Cards, Alert, Spinner, Icon, Modal, Box, SpaceBetween, Badge, ExpandableSection, Tabs, Container } from '@cloudscape-design/components';
 import { FetchPost } from "../../resources/data-provider";
+import { refreshThumbnailUrls } from "../../resources/thumbnail-utils";
 import DefaultThumbnail from '../../static/default_thumbnail.png';
 import { getCurrentUser } from 'aws-amplify/auth';
 import sample_images from '../../resources/sample-images.json'
@@ -98,15 +99,15 @@ class VideoSearch extends React.Component {
                     }
                     else {
                         if (resp !== null) {
-                            var items = resp;
-                            //console.log(items);
-                            this.setState(
-                                {
-                                    items: items === null?[]:items,
-                                    status: null,
-                                    alert: null,
-                                }
-                            );
+                            refreshThumbnailUrls(resp, "ExtrService").then(itemsWithUrls => {
+                                this.setState(
+                                    {
+                                        items: itemsWithUrls === null?[]:itemsWithUrls,
+                                        status: null,
+                                        alert: null,
+                                    }
+                                );
+                            });
                         }
                     }
                 })

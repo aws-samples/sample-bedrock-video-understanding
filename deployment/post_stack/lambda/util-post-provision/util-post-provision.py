@@ -19,6 +19,7 @@ S3_BUCKET_NAME_WEB = os.environ.get("S3_BUCKET_NAME_WEB")
 SM_NOTEBOOK_INSTANCE_NAME = os.environ.get("SM_NOTEBOOK_INSTANCE_NAME")
 
 s3 = boto3.resource('s3')
+s3_client = boto3.client('s3')
 cloudfront = boto3.client('cloudfront')
 cognito = boto3.client('cognito-idp')
 sm = boto3.client("sagemaker")
@@ -32,6 +33,9 @@ def on_event(event, context):
   raise Exception("Invalid request type: %s" % request_type)
 
 def on_create(event):
+  # Update S3 data bucket CORS with CloudFront URL
+  update_s3_cors(S3_BUCKET_NAME_STAGING, CLOUD_FRONT_URL)
+  
   # Copy web build
   copy_s3_prefix_to_root(S3_BUCKET_NAME_STAGING, "build/", S3_BUCKET_NAME_WEB)
 
@@ -109,6 +113,32 @@ def on_complete(event):
 
 def is_complete(event):
   return { 'IsComplete': True }
+
+def update_s3_cors(bucket_name, cloudfront_url):
+    """Update S3 bucket CORS to allow all origins for presigned URLs"""
+    try:
+        cors_config = {
+            'CORSRules': [
+                {
+                    'AllowedHeaders': ['*'],
+                    'AllowedMethods': ['GET', 'HEAD'],
+                    'AllowedOrigins': ['*'],
+                    'ExposeHeaders': ['ETag', 'x-amz-server-side-encryption', 'x-amz-request-id', 'x-amz-id-2'],
+                    'MaxAgeSeconds': 3600
+                },
+                {
+                    'AllowedHeaders': ['*'],
+                    'AllowedMethods': ['POST', 'PUT', 'DELETE'],
+                    'AllowedOrigins': ['*'],
+                    'ExposeHeaders': ['ETag'],
+                    'MaxAgeSeconds': 3600
+                }
+            ]
+        }
+        s3_client.put_bucket_cors(Bucket=bucket_name, CORSConfiguration=cors_config)
+        print(f"✅ Updated CORS for {bucket_name} to allow all origins")
+    except Exception as ex:
+        print(f"Failed to update CORS: {ex}")
 
 def copy_s3_prefix_to_root(src_bucket_name, src_prefix, dest_bucket_name):
     src_bucket = s3.Bucket(src_bucket_name)

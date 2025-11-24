@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Check if running from deployment directory
 if [ ! -f "app.py" ] || [ ! -f "requirements.txt" ]; then
     echo "Error: This script must be run from the deployment directory."

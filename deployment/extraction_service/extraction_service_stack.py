@@ -795,6 +795,17 @@ class ExtrServiceStack(NestedStack):
                 },
             )
 
+        # POST /v1/extraction/video/refresh-thumbnail-urls
+        lambda_key = "extr-srv-api-refresh-thumbnail-urls"
+        self.create_api_endpoint(id=f'{lambda_key}-ep', root=ex_video, path1="refresh-thumbnail-urls", method="POST", auth=self.cognito_authorizer, 
+                role=self.create_role(lambda_key, ["s3"]), 
+                lambda_file_name=lambda_key,
+                memory_m=256, timeout_s=30, ephemeral_storage_size=512,
+                evns={
+                    'S3_PRESIGNED_URL_EXPIRY_S': S3_PRESIGNED_URL_EXPIRY_S,
+                },
+            )
+
         # API Gateway - end
 
     def create_role(self, function_name, policies):

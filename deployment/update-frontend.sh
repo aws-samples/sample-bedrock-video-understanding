@@ -50,13 +50,18 @@ while true; do
     if [ "$STATUS" = "SUCCEEDED" ]; then
         echo "✅ Build completed successfully!"
         
-        # Copy artifacts from staging bucket to web bucket
+        # Get artifact location from CodeBuild project config
         echo "📤 Deploying to web bucket..."
-        STAGING_BUCKET=$(echo $BUCKET | sed 's/cdk-hnb659fds-assets/bedrock-mm/')
-        WEB_BUCKET="bedrock-mm-web-108362357227-$REGION"
+        ARTIFACT_BUCKET=$(aws codebuild batch-get-projects --region $REGION --names "$PROJECT_NAME" --query 'projects[0].artifacts.location' --output text)
+        ARTIFACT_PATH=$(aws codebuild batch-get-projects --region $REGION --names "$PROJECT_NAME" --query 'projects[0].artifacts.path' --output text)
         
-        aws s3 sync s3://$STAGING_BUCKET/build/ s3://$WEB_BUCKET/ --delete --region $REGION
-        echo "✅ Deployed to S3"
+        # Get web bucket name dynamically
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        WEB_BUCKET="bedrock-mm-web-$ACCOUNT_ID-$REGION"
+        
+        # Sync from data bucket build output to web bucket
+        aws s3 sync s3://$ARTIFACT_BUCKET/$ARTIFACT_PATH/ s3://$WEB_BUCKET/ --delete --region $REGION
+        echo "✅ Deployed to S3: $WEB_BUCKET"
         break
     elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "FAULT" ] || [ "$STATUS" = "STOPPED" ]; then
         echo "❌ Build failed: $STATUS"

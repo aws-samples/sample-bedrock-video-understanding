@@ -67,7 +67,7 @@ class ServicePostStack(NestedStack):
                     ),
                     _iam.PolicyStatement(
                         effect=_iam.Effect.ALLOW,
-                        actions=["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:HeadObject"],
+                        actions=["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:HeadObject", "s3:PutBucketCors", "s3:GetBucketCors"],
                         resources=[
                             f"arn:aws:s3:::{self.s3_web_bucket_name}",
                             f"arn:aws:s3:::{self.s3_web_bucket_name}/*",

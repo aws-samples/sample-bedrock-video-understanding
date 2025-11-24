@@ -58,19 +58,11 @@ def lambda_handler(event, context):
     if end_index > len(result):
         end_index = len(result)
 
-    # Generate URL
+    # Return S3 bucket/key for on-demand URL generation
     result = result[from_index:end_index]
-    for r in result:
-        if "S3Bucket" in r and "S3Key" in r:
-            r["ThumbnailUrl"] = s3.generate_presigned_url(
-                    'get_object',
-                    Params={'Bucket': r["S3Bucket"], 'Key': r["S3Key"]},
-                    ExpiresIn=S3_PRESIGNED_URL_EXPIRY_S
-                )
-            del r["S3Bucket"]
-            del r["S3Key"]
 
     return {
         'statusCode': 200,
         'body': result
     }
+# Force redeploy Sat Nov 22 11:55:06 PST 2025

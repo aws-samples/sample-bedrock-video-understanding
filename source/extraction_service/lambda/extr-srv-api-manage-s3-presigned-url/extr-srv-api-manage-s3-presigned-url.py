@@ -94,6 +94,28 @@ def lambda_handler(event, context):
                 'statusCode': 200,
                 'body': f'Uploading task aborted.'
             }
+    elif action == "get":
+        # Generate presigned URL for GET with CORS response headers
+        url = s3.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': VIDEO_UPLOAD_S3_BUCKET,
+                'Key': key,
+                'ResponseCacheControl': 'no-cache',
+                'ResponseContentType': 'application/octet-stream'
+            },
+            ExpiresIn=S3_PRESIGNED_URL_EXPIRY_S
+        )
+        return {
+            'statusCode': 200,
+            'body': {
+                "TaskId": task_id,
+                "FileName": file_name,
+                "Url": url,
+                "S3Bucket": VIDEO_UPLOAD_S3_BUCKET,
+                "S3Key": key
+            }
+        }
 
     return {
             'statusCode': 400,
