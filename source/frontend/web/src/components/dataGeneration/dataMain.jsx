@@ -2,6 +2,7 @@ import React, { Component } from "react";
 import { Select, Table, Container, Header, SpaceBetween, BarChart, Box, ColumnLayout, Spinner, Alert } from "@cloudscape-design/components";
 import { FetchPost } from "../../resources/data-provider";
 import { refreshThumbnailUrls } from "../../resources/thumbnail-utils";
+import pricingConfig from "../../resources/pricing-config.json";
 import "./dataMain.css";
 
 const GROUP_OPTIONS = [
@@ -18,6 +19,53 @@ const formatBytes = (bytes) => {
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+};
+
+const calculateCost = (usageRecords, region = 'us-east-1') => {
+  if (!usageRecords || !Array.isArray(usageRecords)) return 0;
+
+  let totalCost = 0;
+  const regionPricing = pricingConfig[region] || pricingConfig['us-east-1'];
+
+  usageRecords.forEach(record => {
+    const modelId = record.model_id;
+    // Handle cases where type might be missing or different
+    const type = record.type;
+
+    if (regionPricing[modelId]) {
+      let pricing = null;
+      // Try to find pricing by type, or fallback if structure allows
+      if (type && regionPricing[modelId][type]) {
+        pricing = regionPricing[modelId][type];
+      } else {
+        // Fallback: check if model has direct pricing keys (unlikely based on config structure but good safety)
+        // or if there's only one key in the model object
+        const keys = Object.keys(regionPricing[modelId]);
+        if (keys.length === 1) pricing = regionPricing[modelId][keys[0]];
+      }
+
+      if (pricing) {
+        let amount = 0;
+        if (pricing.unit === 'token') {
+          amount = ((record.input_tokens || 0) / 1000) * pricing.price_per_1k_input_tokens +
+            ((record.output_tokens || 0) / 1000) * pricing.price_per_1k_output_tokens;
+        } else if (pricing.unit === 'image') {
+          amount = (record.number_of_image || 1) * pricing.price_per_image;
+        } else if (pricing.unit === 'second') {
+          amount = (record.duration || 0) * pricing.price_per_second;
+        }
+        totalCost += amount;
+      }
+    } else if (modelId === 'amazon_transcribe') {
+      // Special handling for transcribe if it appears as model_id
+      const pricing = regionPricing['amazon_transcribe']['transcribe'];
+      if (pricing) {
+        totalCost += (record.duration || 0) * pricing.price_per_second;
+      }
+    }
+  });
+
+  return totalCost;
 };
 
 class DataGenerationMain extends Component {
@@ -59,7 +107,7 @@ class DataGenerationMain extends Component {
           }
 
           const tasks = await refreshThumbnailUrls(tasksResponse.body || [], "ExtrService");
-          const completedTasks = tasks.filter(t => t.Status === "COMPLETED");
+          const completedTasks = tasks.filter(t => t.Status === "COMPLETED" || t.Status === "extraction_completed");
 
           // Fetch data size and cost for each completed task
           const taskDetails = await Promise.all(
@@ -72,7 +120,7 @@ class DataGenerationMain extends Component {
 
                 return {
                   dataSize: dataSizeRes.statusCode === 200 ? dataSizeRes.body?.total_size || 0 : 0,
-                  computeCost: costRes.statusCode === 200 ? costRes.body?.total_cost || 0 : 0,
+                  computeCost: costRes.statusCode === 200 ? calculateCost(costRes.body?.usage_records, costRes.body?.region) : 0,
                 };
               } catch (err) {
                 return { dataSize: 0, computeCost: 0 };
@@ -97,6 +145,25 @@ class DataGenerationMain extends Component {
       );
 
       const validData = workflowData.filter(d => d !== null);
+
+      if (validData.length > 0) {
+        const totalVideos = validData.reduce((sum, item) => sum + item.videos, 0);
+        const totalComputeCost = validData.reduce((sum, item) => sum + item.computeCost, 0);
+        const totalStorageCost = validData.reduce((sum, item) => sum + item.storageCost, 0);
+        const totalCost = validData.reduce((sum, item) => sum + item.totalCost, 0);
+        const totalDataSize = validData.reduce((sum, item) => sum + item.dataSize, 0);
+        const avgDataSize = totalVideos > 0 ? totalDataSize / totalVideos : 0;
+
+        validData.push({
+          workflow: "Total",
+          videos: totalVideos,
+          computeCost: totalComputeCost,
+          storageCost: totalStorageCost,
+          totalCost: totalCost,
+          dataSize: totalDataSize,
+          avgDataSize: avgDataSize
+        });
+      }
 
       this.setState({
         tableData: validData,
@@ -169,9 +236,9 @@ class DataGenerationMain extends Component {
               columnDefinitions={[
                 { id: "workflow", header: "Workflow", cell: item => item.workflow },
                 { id: "videos", header: "Videos Processed", cell: item => item.videos },
-                { id: "computeCost", header: "Compute Cost ($)", cell: item => item.computeCost.toFixed(2) },
-                { id: "storageCost", header: "Storage Cost ($)", cell: item => item.storageCost.toFixed(2) },
-                { id: "totalCost", header: "Total Cost ($)", cell: item => item.totalCost.toFixed(2) },
+                { id: "computeCost", header: "Token Usage & Cost ($)", cell: item => item.computeCost.toFixed(4) },
+                { id: "storageCost", header: "Storage Cost ($)", cell: item => item.storageCost.toFixed(4) },
+                { id: "totalCost", header: "Total Cost ($)", cell: item => item.totalCost.toFixed(4) },
                 { id: "dataSize", header: "Total Data Generated", cell: item => formatBytes(item.dataSize) },
                 { id: "avgDataSize", header: "Avg Data per Video", cell: item => formatBytes(item.avgDataSize) },
               ]}
@@ -190,7 +257,7 @@ class DataGenerationMain extends Component {
               <BarChart
                 series={[
                   {
-                    title: "Compute Cost",
+                    title: "Token Usage & Cost",
                     type: "bar",
                     data: tableData.map(item => ({ x: item.workflow, y: item.computeCost })),
                   },
