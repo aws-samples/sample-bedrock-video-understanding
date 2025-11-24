@@ -72,6 +72,12 @@
         "price_per_second": 0.0007,
         "unit": "second"
       }
+    },
+    "infrastructure": {
+      "processing": {
+        "price_per_second": 0.0001,
+        "unit": "second"
+      }
     }
   }
 }

@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { Select, Table, Container, Header, SpaceBetween, BarChart, Box, ColumnLayout, Spinner, Alert } from "@cloudscape-design/components";
+import { Select, Table, Container, Header, SpaceBetween, BarChart, Box, ColumnLayout, Spinner, Alert, ExpandableSection } from "@cloudscape-design/components";
 import { FetchPost } from "../../resources/data-provider";
 import { refreshThumbnailUrls } from "../../resources/thumbnail-utils";
 import pricingConfig from "../../resources/pricing-config.json";
@@ -68,6 +68,23 @@ const calculateCost = (usageRecords, region = 'us-east-1') => {
   return totalCost;
 };
 
+const calculateInfrastructureCost = (usageRecords, region = 'us-east-1') => {
+  if (!usageRecords || !Array.isArray(usageRecords)) return 0;
+
+  const regionPricing = pricingConfig[region] || pricingConfig['us-east-1'];
+  const infraPricing = regionPricing.infrastructure?.processing;
+
+  if (!infraPricing) return 0;
+
+  let maxDuration = 0;
+  usageRecords.forEach(record => {
+    const duration = parseFloat(record.duration || record.duration_s || 0);
+    if (duration > maxDuration) maxDuration = duration;
+  });
+
+  return maxDuration * infraPricing.price_per_second;
+};
+
 class DataGenerationMain extends Component {
   constructor(props) {
     super(props);
@@ -121,6 +138,7 @@ class DataGenerationMain extends Component {
                 return {
                   dataSize: dataSizeRes.statusCode === 200 ? dataSizeRes.body?.total_size || 0 : 0,
                   computeCost: costRes.statusCode === 200 ? calculateCost(costRes.body?.usage_records, costRes.body?.region) : 0,
+                  infraCost: costRes.statusCode === 200 ? calculateInfrastructureCost(costRes.body?.usage_records, costRes.body?.region) : 0,
                 };
               } catch (err) {
                 return { dataSize: 0, computeCost: 0 };
@@ -130,14 +148,16 @@ class DataGenerationMain extends Component {
 
           const totalDataSize = taskDetails.reduce((sum, t) => sum + t.dataSize, 0);
           const totalComputeCost = taskDetails.reduce((sum, t) => sum + t.computeCost, 0);
+          const totalInfraCost = taskDetails.reduce((sum, t) => sum + t.infraCost, 0);
           const storageCost = (totalDataSize / (1024 * 1024 * 1024)) * 0.023; // S3 Standard: $0.023/GB
 
           return {
             workflow: workflow.name,
             videos: completedTasks.length,
             computeCost: totalComputeCost,
+            infraCost: totalInfraCost,
             storageCost: storageCost,
-            totalCost: totalComputeCost + storageCost,
+            totalCost: totalComputeCost + totalInfraCost + storageCost,
             dataSize: totalDataSize,
             avgDataSize: completedTasks.length > 0 ? totalDataSize / completedTasks.length : 0,
           };
@@ -149,6 +169,7 @@ class DataGenerationMain extends Component {
       if (validData.length > 0) {
         const totalVideos = validData.reduce((sum, item) => sum + item.videos, 0);
         const totalComputeCost = validData.reduce((sum, item) => sum + item.computeCost, 0);
+        const totalInfraCost = validData.reduce((sum, item) => sum + item.infraCost, 0);
         const totalStorageCost = validData.reduce((sum, item) => sum + item.storageCost, 0);
         const totalCost = validData.reduce((sum, item) => sum + item.totalCost, 0);
         const totalDataSize = validData.reduce((sum, item) => sum + item.dataSize, 0);
@@ -158,6 +179,7 @@ class DataGenerationMain extends Component {
           workflow: "Total",
           videos: totalVideos,
           computeCost: totalComputeCost,
+          infraCost: totalInfraCost,
           storageCost: totalStorageCost,
           totalCost: totalCost,
           dataSize: totalDataSize,
@@ -232,35 +254,72 @@ class DataGenerationMain extends Component {
           </Container>
 
           <Container header={<Header variant="h3">Cost & Data Generation Summary</Header>}>
-            <Table
-              columnDefinitions={[
-                { id: "workflow", header: "Workflow", cell: item => item.workflow },
-                { id: "videos", header: "Videos Processed", cell: item => item.videos },
-                { id: "computeCost", header: "Token Usage & Cost ($)", cell: item => item.computeCost.toFixed(4) },
-                { id: "storageCost", header: "Storage Cost ($)", cell: item => item.storageCost.toFixed(4) },
-                { id: "totalCost", header: "Total Cost ($)", cell: item => item.totalCost.toFixed(4) },
-                { id: "dataSize", header: "Total Data Generated", cell: item => formatBytes(item.dataSize) },
-                { id: "avgDataSize", header: "Avg Data per Video", cell: item => formatBytes(item.avgDataSize) },
-              ]}
-              items={tableData}
-              loadingText="Loading data"
-              empty={
-                <Box textAlign="center" color="inherit">
-                  <b>No data available</b>
-                </Box>
-              }
-            />
+            <SpaceBetween size="m">
+              <ExpandableSection
+                headerText="Storage Cost Disclaimer"
+                variant="container"
+                defaultExpanded={false}
+              >
+                <Alert type="info" header="Reference Only">
+                  <SpaceBetween size="xs">
+                    <div>
+                      This storage cost estimate is calculated based on the total size of data generated
+                      (video frames, metadata, analysis results) using the <strong>S3 Standard</strong> storage rate
+                      (approx. $0.023 per GB/month).
+                    </div>
+                    <div>
+                      <strong>Important Notes:</strong>
+                    </div>
+                    <ul style={{ marginTop: '0.5rem', marginBottom: '0.5rem', paddingLeft: '1.5rem' }}>
+                      <li>
+                        <strong>Monthly Estimate:</strong> The cost shown represents the estimated <em>monthly</em> cost
+                        to store the generated data.
+                      </li>
+                      <li>
+                        <strong>DynamoDB Inclusion:</strong> The size of DynamoDB records is included in the total
+                        data size and priced at the S3 rate for simplicity, as the impact is negligible.
+                      </li>
+                      <li>
+                        <strong>Actual Costs:</strong> Actual AWS costs may vary based on your specific region,
+                        storage class (e.g., Intelligent-Tiering, Glacier), and data transfer usage.
+                      </li>
+                    </ul>
+                    <div>
+                      <a
+                        href="https://aws.amazon.com/s3/pricing/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        AWS S3 Pricing
+                      </a>
+                    </div>
+                  </SpaceBetween>
+                </Alert>
+              </ExpandableSection>
+              <Table
+                columnDefinitions={[
+                  { id: "workflow", header: "Workflow", cell: item => item.workflow },
+                  { id: "videos", header: "Videos Processed", cell: item => item.videos },
+                  { id: "storageCost", header: "Storage Cost ($)", cell: item => item.storageCost.toFixed(4) },
+                  { id: "totalCost", header: "Total Cost ($)", cell: item => item.totalCost.toFixed(4) },
+                  { id: "dataSize", header: "Total Data Generated", cell: item => formatBytes(item.dataSize) },
+                  { id: "avgDataSize", header: "Avg Data per Video", cell: item => formatBytes(item.avgDataSize) },
+                ]}
+                items={tableData}
+                loadingText="Loading data"
+                empty={
+                  <Box textAlign="center" color="inherit">
+                    <b>No data available</b>
+                  </Box>
+                }
+              />
+            </SpaceBetween>
           </Container>
 
           <ColumnLayout columns={2}>
             <Container header={<Header variant="h3">Cost Breakdown</Header>}>
               <BarChart
                 series={[
-                  {
-                    title: "Token Usage & Cost",
-                    type: "bar",
-                    data: tableData.map(item => ({ x: item.workflow, y: item.computeCost })),
-                  },
                   {
                     title: "Storage Cost",
                     type: "bar",
