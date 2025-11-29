@@ -42,9 +42,12 @@ def lambda_handler(event, context):
                     "Status": task["Status"],
                     "RequestBy": task.get("RequestBy")
                 }
-            if "MetaData" in task and "VideoMetaData" in task["MetaData"] and "ThumbnailS3Bucket" in task["MetaData"]["VideoMetaData"]:
-                r["S3Bucket"] = task["MetaData"]["VideoMetaData"]["ThumbnailS3Bucket"]
-                r["S3Key"] = task["MetaData"]["VideoMetaData"]["ThumbnailS3Key"]
+            if "MetaData" in task and "VideoMetaData" in task["MetaData"]:
+                video_meta = task["MetaData"]["VideoMetaData"]
+                if "ThumbnailS3Bucket" in video_meta:
+                    r["S3Bucket"] = video_meta["ThumbnailS3Bucket"]
+                    r["S3Key"] = video_meta["ThumbnailS3Key"]
+                r["MetaData"] = {"VideoMetaData": {"Size": video_meta.get("Size", 0), "Duration": video_meta.get("Duration", 0)}}
             result.append(r)
 
     # Sort by RequestTs

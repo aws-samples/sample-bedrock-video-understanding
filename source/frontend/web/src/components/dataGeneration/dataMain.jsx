@@ -29,17 +29,13 @@ const calculateCost = (usageRecords, region = 'us-east-1') => {
 
   usageRecords.forEach(record => {
     const modelId = record.model_id;
-    // Handle cases where type might be missing or different
     const type = record.type;
 
     if (regionPricing[modelId]) {
       let pricing = null;
-      // Try to find pricing by type, or fallback if structure allows
       if (type && regionPricing[modelId][type]) {
         pricing = regionPricing[modelId][type];
       } else {
-        // Fallback: check if model has direct pricing keys (unlikely based on config structure but good safety)
-        // or if there's only one key in the model object
         const keys = Object.keys(regionPricing[modelId]);
         if (keys.length === 1) pricing = regionPricing[modelId][keys[0]];
       }
@@ -57,7 +53,6 @@ const calculateCost = (usageRecords, region = 'us-east-1') => {
         totalCost += amount;
       }
     } else if (modelId === 'amazon_transcribe') {
-      // Special handling for transcribe if it appears as model_id
       const pricing = regionPricing['amazon_transcribe']['transcribe'];
       if (pricing) {
         totalCost += (record.duration || 0) * pricing.price_per_second;
@@ -105,43 +100,46 @@ class DataGenerationMain extends Component {
     this.setState({ loading: true, error: null });
 
     try {
-      const workflowTypes = [
+      // Extraction service workflows (Frame Based, Shot Based)
+      const extractionWorkflows = [
         { name: "Frame Based", type: "frame" },
         { name: "Shot Based", type: "clip" },
       ];
 
-      const workflowData = await Promise.all(
-        workflowTypes.map(async (workflow) => {
-          // Get all tasks for this workflow type
+      const extractionData = await Promise.all(
+        extractionWorkflows.map(async (workflow) => {
           const tasksResponse = await FetchPost(
             "/extraction/video/search-task",
             { TaskType: workflow.type, PageSize: 1000 },
             "ExtrService"
           );
 
-          if (tasksResponse.statusCode !== 200) {
-            return null;
-          }
+          if (tasksResponse.statusCode !== 200) return null;
 
           const tasks = await refreshThumbnailUrls(tasksResponse.body || [], "ExtrService");
           const completedTasks = tasks.filter(t => t.Status === "COMPLETED" || t.Status === "extraction_completed");
 
-          // Fetch data size and cost for each completed task
+          // Calculate source video size from task metadata
+          const totalSourceVideoSize = completedTasks.reduce((sum, task) => {
+            const size = parseFloat(task.MetaData?.VideoMetaData?.Size) || 0;
+            return sum + size;
+          }, 0);
+
+          const workflowType = workflow.type === "frame" ? "frame_based" : "shot_based";
           const taskDetails = await Promise.all(
             completedTasks.map(async (task) => {
               try {
                 const [dataSizeRes, costRes] = await Promise.all([
-                  FetchPost("/extraction/video/get-data-size", { task_id: task.TaskId }, "ExtrService"),
+                  FetchPost("/extraction/video/get-data-size", { task_id: task.TaskId, workflow_type: workflowType }, "ExtrService"),
                   FetchPost("/extraction/video/get-token-and-cost", { task_id: task.TaskId }, "ExtrService"),
                 ]);
-
                 return {
                   dataSize: dataSizeRes.statusCode === 200 ? dataSizeRes.body?.total_size || 0 : 0,
                   computeCost: costRes.statusCode === 200 ? calculateCost(costRes.body?.usage_records, costRes.body?.region) : 0,
                   infraCost: costRes.statusCode === 200 ? calculateInfrastructureCost(costRes.body?.usage_records, costRes.body?.region) : 0,
                 };
               } catch (err) {
-                return { dataSize: 0, computeCost: 0 };
+                return { dataSize: 0, computeCost: 0, infraCost: 0 };
               }
             })
           );
@@ -149,47 +147,59 @@ class DataGenerationMain extends Component {
           const totalDataSize = taskDetails.reduce((sum, t) => sum + t.dataSize, 0);
           const totalComputeCost = taskDetails.reduce((sum, t) => sum + t.computeCost, 0);
           const totalInfraCost = taskDetails.reduce((sum, t) => sum + t.infraCost, 0);
-          const storageCost = (totalDataSize / (1024 * 1024 * 1024)) * 0.023; // S3 Standard: $0.023/GB
+          const sourceVideoStorageCost = (totalSourceVideoSize / (1024 * 1024 * 1024)) * 0.023;
+          const generatedDataStorageCost = (totalDataSize / (1024 * 1024 * 1024)) * 0.023;
 
           return {
             workflow: workflow.name,
             videos: completedTasks.length,
+            sourceVideoSize: totalSourceVideoSize,
             computeCost: totalComputeCost,
             infraCost: totalInfraCost,
-            storageCost: storageCost,
-            totalCost: totalComputeCost + totalInfraCost + storageCost,
+            sourceVideoStorageCost: sourceVideoStorageCost,
+            generatedDataStorageCost: generatedDataStorageCost,
+            totalCost: sourceVideoStorageCost + generatedDataStorageCost,
             dataSize: totalDataSize,
             avgDataSize: completedTasks.length > 0 ? totalDataSize / completedTasks.length : 0,
           };
         })
       );
 
-      const validData = workflowData.filter(d => d !== null);
+      // Nova MME workflow
+      const novaData = await this.loadEmbeddingWorkflowData("Nova MME", "/nova/embedding/search-task", "NovaService", "nova_mme");
 
-      if (validData.length > 0) {
-        const totalVideos = validData.reduce((sum, item) => sum + item.videos, 0);
-        const totalComputeCost = validData.reduce((sum, item) => sum + item.computeCost, 0);
-        const totalInfraCost = validData.reduce((sum, item) => sum + item.infraCost, 0);
-        const totalStorageCost = validData.reduce((sum, item) => sum + item.storageCost, 0);
-        const totalCost = validData.reduce((sum, item) => sum + item.totalCost, 0);
-        const totalDataSize = validData.reduce((sum, item) => sum + item.dataSize, 0);
-        const avgDataSize = totalVideos > 0 ? totalDataSize / totalVideos : 0;
+      // TwelveLabs workflow
+      const tlabsData = await this.loadEmbeddingWorkflowData("TwelveLabs", "/tlabs/embedding/search-task", "TLabsService", "tlabs");
 
-        validData.push({
+      const allData = [...extractionData, novaData, tlabsData].filter(d => d !== null);
+
+      if (allData.length > 0) {
+        const totalVideos = allData.reduce((sum, item) => sum + item.videos, 0);
+        const totalSourceVideoSize = allData.reduce((sum, item) => sum + item.sourceVideoSize, 0);
+        const totalComputeCost = allData.reduce((sum, item) => sum + item.computeCost, 0);
+        const totalInfraCost = allData.reduce((sum, item) => sum + item.infraCost, 0);
+        const totalSourceVideoStorageCost = allData.reduce((sum, item) => sum + item.sourceVideoStorageCost, 0);
+        const totalGeneratedDataStorageCost = allData.reduce((sum, item) => sum + item.generatedDataStorageCost, 0);
+        const totalCost = allData.reduce((sum, item) => sum + item.totalCost, 0);
+        const totalDataSize = allData.reduce((sum, item) => sum + item.dataSize, 0);
+
+        allData.push({
           workflow: "Total",
           videos: totalVideos,
+          sourceVideoSize: totalSourceVideoSize,
           computeCost: totalComputeCost,
           infraCost: totalInfraCost,
-          storageCost: totalStorageCost,
+          sourceVideoStorageCost: totalSourceVideoStorageCost,
+          generatedDataStorageCost: totalGeneratedDataStorageCost,
           totalCost: totalCost,
           dataSize: totalDataSize,
-          avgDataSize: avgDataSize
+          avgDataSize: totalVideos > 0 ? totalDataSize / totalVideos : 0
         });
       }
 
       this.setState({
-        tableData: validData,
-        chartData: validData.map(item => ({ x: item.workflow, y: item.totalCost })),
+        tableData: allData,
+        chartData: allData.map(item => ({ x: item.workflow, y: item.totalCost })),
         loading: false,
       });
     } catch (err) {
@@ -200,13 +210,60 @@ class DataGenerationMain extends Component {
     }
   };
 
+  loadEmbeddingWorkflowData = async (name, endpoint, apiName, workflowType) => {
+    try {
+      const tasksResponse = await FetchPost(endpoint, { SearchText: "", PageSize: 1000, FromIndex: 0 }, apiName);
+      if (tasksResponse.statusCode !== 200) return null;
+
+      const tasks = tasksResponse.body || [];
+      const completedTasks = tasks.filter(t => t.Status === "COMPLETED" || t.Status === "completed");
+
+      // Fetch real data sizes from S3 using extraction service API
+      const taskDetails = await Promise.all(
+        completedTasks.map(async (task) => {
+          const taskId = task.TaskId || task.Id;
+          const videoSize = parseFloat(task.MetaData?.VideoMetaData?.Size) || 0;
+          try {
+            const dataSizeRes = await FetchPost("/extraction/video/get-data-size", { task_id: taskId, workflow_type: workflowType }, "ExtrService");
+            return {
+              sourceVideoSize: videoSize,
+              dataSize: dataSizeRes.statusCode === 200 ? dataSizeRes.body?.total_size || 0 : 0,
+            };
+          } catch (err) {
+            return { sourceVideoSize: videoSize, dataSize: 0 };
+          }
+        })
+      );
+
+      const totalSourceVideoSize = taskDetails.reduce((sum, t) => sum + t.sourceVideoSize, 0);
+      const totalDataSize = taskDetails.reduce((sum, t) => sum + t.dataSize, 0);
+      const sourceVideoStorageCost = (totalSourceVideoSize / (1024 * 1024 * 1024)) * 0.023;
+      const generatedDataStorageCost = (totalDataSize / (1024 * 1024 * 1024)) * 0.023;
+
+      return {
+        workflow: name,
+        videos: completedTasks.length,
+        sourceVideoSize: totalSourceVideoSize,
+        computeCost: 0,
+        infraCost: 0,
+        sourceVideoStorageCost: sourceVideoStorageCost,
+        generatedDataStorageCost: generatedDataStorageCost,
+        totalCost: sourceVideoStorageCost + generatedDataStorageCost,
+        dataSize: totalDataSize,
+        avgDataSize: completedTasks.length > 0 ? totalDataSize / completedTasks.length : 0,
+      };
+    } catch (err) {
+      console.error(`Error loading ${name} data:`, err);
+      return null;
+    }
+  };
+
   handleGroupChange = ({ detail }) => {
     this.setState({ selectedGroup: detail.selectedOption });
-    // Filter data based on selection
   };
 
   render() {
-    const { selectedGroup, tableData, chartData, loading, error } = this.state;
+    const { selectedGroup, tableData, loading, error } = this.state;
 
     if (loading) {
       return (
@@ -256,6 +313,41 @@ class DataGenerationMain extends Component {
           <Container header={<Header variant="h3">Cost & Data Generation Summary</Header>}>
             <SpaceBetween size="m">
               <ExpandableSection
+                headerText="Calculation Logic"
+                variant="container"
+                defaultExpanded={false}
+              >
+                <SpaceBetween size="s">
+                  <div><strong>Frame Based</strong></div>
+                  <ul style={{ margin: '0', paddingLeft: '1.5rem' }}>
+                    <li>S3: Extracted PNG frames, frame analysis JSON, transcription files</li>
+                    <li>DynamoDB: Frame analysis records, transcript records</li>
+                  </ul>
+                  
+                  <div><strong>Shot Based</strong></div>
+                  <ul style={{ margin: '0', paddingLeft: '1.5rem' }}>
+                    <li>S3: Video clips, shot analysis JSON, shot embeddings, transcription files</li>
+                    <li>DynamoDB: Shot analysis records, transcript records</li>
+                  </ul>
+                  
+                  <div><strong>Nova MME</strong></div>
+                  <ul style={{ margin: '0', paddingLeft: '1.5rem' }}>
+                    <li>S3: Embedding JSONL files (~26KB), manifest, metadata</li>
+                    <li>S3 Vectors: Vector embeddings (~4KB per vector, 1024 dimensions × 4 bytes + metadata)</li>
+                  </ul>
+                  
+                  <div><strong>TwelveLabs</strong></div>
+                  <ul style={{ margin: '0', paddingLeft: '1.5rem' }}>
+                    <li>S3: Output JSON files (~8-16KB), manifest</li>
+                    <li>S3 Vectors: Vector embeddings (~4KB per vector, 1024 dimensions × 4 bytes + metadata)</li>
+                  </ul>
+                  
+                  <Alert type="info" header="Note">
+                    Source video files and thumbnails are excluded from Generated Data calculation.
+                  </Alert>
+                </SpaceBetween>
+              </ExpandableSection>
+              <ExpandableSection
                 headerText="Storage Cost Disclaimer"
                 variant="container"
                 defaultExpanded={false}
@@ -263,47 +355,28 @@ class DataGenerationMain extends Component {
                 <Alert type="info" header="Reference Only">
                   <SpaceBetween size="xs">
                     <div>
-                      This storage cost estimate is calculated based on the total size of data generated
-                      (video frames, metadata, analysis results) using the <strong>S3 Standard</strong> storage rate
-                      (approx. $0.023 per GB/month).
-                    </div>
-                    <div>
-                      <strong>Important Notes:</strong>
+                      Storage cost is calculated based on <strong>Generated Data</strong> only (excluding source videos)
+                      using the <strong>S3 Standard</strong> storage rate (approx. $0.023 per GB/month).
                     </div>
                     <ul style={{ marginTop: '0.5rem', marginBottom: '0.5rem', paddingLeft: '1.5rem' }}>
-                      <li>
-                        <strong>Monthly Estimate:</strong> The cost shown represents the estimated <em>monthly</em> cost
-                        to store the generated data.
-                      </li>
-                      <li>
-                        <strong>DynamoDB Inclusion:</strong> The size of DynamoDB records is included in the total
-                        data size and priced at the S3 rate for simplicity, as the impact is negligible.
-                      </li>
-                      <li>
-                        <strong>Actual Costs:</strong> Actual AWS costs may vary based on your specific region,
-                        storage class (e.g., Intelligent-Tiering, Glacier), and data transfer usage.
-                      </li>
+                      <li><strong>Source Video Size:</strong> Original uploaded video files</li>
+                      <li><strong>Generated Data:</strong> Frames, embeddings, analysis outputs, and metadata</li>
                     </ul>
-                    <div>
-                      <a
-                        href="https://aws.amazon.com/s3/pricing/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        AWS S3 Pricing
-                      </a>
-                    </div>
+                    <a href="https://aws.amazon.com/s3/pricing/" target="_blank" rel="noopener noreferrer">
+                      AWS S3 Pricing
+                    </a>
                   </SpaceBetween>
                 </Alert>
               </ExpandableSection>
               <Table
                 columnDefinitions={[
                   { id: "workflow", header: "Workflow", cell: item => item.workflow },
-                  { id: "videos", header: "Videos Processed", cell: item => item.videos },
-                  { id: "storageCost", header: "Storage Cost ($)", cell: item => item.storageCost.toFixed(4) },
-                  { id: "totalCost", header: "Total Cost ($)", cell: item => item.totalCost.toFixed(4) },
-                  { id: "dataSize", header: "Total Data Generated", cell: item => formatBytes(item.dataSize) },
-                  { id: "avgDataSize", header: "Avg Data per Video", cell: item => formatBytes(item.avgDataSize) },
+                  { id: "videos", header: "Videos", cell: item => item.videos },
+                  { id: "sourceVideoSize", header: "Source Video Size", cell: item => formatBytes(item.sourceVideoSize) },
+                  { id: "dataSize", header: "Generated Data Size", cell: item => formatBytes(item.dataSize) },
+                  { id: "sourceVideoStorageCost", header: "Source Video Storage ($)", cell: item => item.sourceVideoStorageCost.toFixed(6) },
+                  { id: "generatedDataStorageCost", header: "Generated Data Storage ($)", cell: item => item.generatedDataStorageCost.toFixed(6) },
+                  { id: "totalCost", header: "Total Storage Cost ($)", cell: item => item.totalCost.toFixed(6) },
                 ]}
                 items={tableData}
                 loadingText="Loading data"
@@ -317,13 +390,18 @@ class DataGenerationMain extends Component {
           </Container>
 
           <ColumnLayout columns={2}>
-            <Container header={<Header variant="h3">Cost Breakdown</Header>}>
+            <Container header={<Header variant="h3">Storage Cost Breakdown</Header>}>
               <BarChart
                 series={[
                   {
-                    title: "Storage Cost",
+                    title: "Source Video Storage",
                     type: "bar",
-                    data: tableData.map(item => ({ x: item.workflow, y: item.storageCost })),
+                    data: tableData.map(item => ({ x: item.workflow, y: item.sourceVideoStorageCost })),
+                  },
+                  {
+                    title: "Generated Data Storage",
+                    type: "bar",
+                    data: tableData.map(item => ({ x: item.workflow, y: item.generatedDataStorageCost })),
                   },
                 ]}
                 xDomain={tableData.map(item => item.workflow)}
@@ -340,20 +418,26 @@ class DataGenerationMain extends Component {
               />
             </Container>
 
-            <Container header={<Header variant="h3">Data Generation Volume</Header>}>
+            <Container header={<Header variant="h3">Data Volume</Header>}>
               <BarChart
                 series={[
                   {
-                    title: "Data Size",
+                    title: "Source Video",
+                    type: "bar",
+                    data: tableData.map(item => ({ x: item.workflow, y: item.sourceVideoSize / (1024 * 1024 * 1024) })),
+                  },
+                  {
+                    title: "Generated Data",
                     type: "bar",
                     data: tableData.map(item => ({ x: item.workflow, y: item.dataSize / (1024 * 1024 * 1024) })),
                   },
                 ]}
                 xDomain={tableData.map(item => item.workflow)}
-                yDomain={[0, Math.max(...tableData.map(d => d.dataSize / (1024 * 1024 * 1024))) * 1.2]}
+                yDomain={[0, Math.max(...tableData.map(d => (d.sourceVideoSize + d.dataSize) / (1024 * 1024 * 1024))) * 1.2]}
                 xTitle="Workflow"
-                yTitle="Data Size (GB)"
+                yTitle="Size (GB)"
                 height={300}
+                stackedBars
                 empty={
                   <Box textAlign="center" color="inherit">
                     <b>No data available</b>

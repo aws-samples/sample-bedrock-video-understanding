@@ -74,8 +74,18 @@ def lambda_handler(event, context):
             use_fixed_length_sec=use_fixed_length_sec,
         )
     else:
-        # Use OpenCV
+        # Use OpenCV scene detection
         shots = segment_video_opencv(local_file_path, video_duration)
+        
+        # If scene detection returns no shots, treat entire video as single shot
+        if not shots and video_duration:
+            print(f"Scene detection found no shots, treating entire video ({video_duration}s) as single shot")
+            shots = [{
+                "index": 1,
+                "start_time": 0.0,
+                "end_time": video_duration,
+                "duration": video_duration,
+            }]
 
     if start_sec or length_sec or min_clip_sec:
         print("!!!!",start_sec, length_sec, min_clip_sec)

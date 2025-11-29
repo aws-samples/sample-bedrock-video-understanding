@@ -30,7 +30,7 @@ def lambda_handler(event, context):
         s3_bucket = event["detail"]["bucket"]["name"]
         s3_key = event["detail"]["object"]["key"]
         task_id = s3_key.split('/')[1]
-    except ex as Exception:
+    except Exception as ex:
         print(ex)
         return {
             'statusCode': 400,
@@ -82,11 +82,17 @@ def lambda_handler(event, context):
         counter += 1
         if len(embeddings) >= batch_size or counter >= len(output):
             # Write embeddings into vector index with metadata.
-            s3vectors.put_vectors(
-                vectorBucketName=TLABS_S3_VECTOR_BUCKET,   
-                indexName=index_name,   
-                vectors=embeddings
-            )
+            try:
+                s3vectors.put_vectors(
+                    vectorBucketName=TLABS_S3_VECTOR_BUCKET,   
+                    indexName=index_name,   
+                    vectors=embeddings
+                )
+            except Exception as vec_err:
+                # Ignore duplicate key errors - vectors already exist
+                if "duplicate" not in str(vec_err).lower():
+                    raise vec_err
+                print(f"Vectors already exist, skipping: {vec_err}")
             embeddings = []
 
     # Update DynamoDB task status

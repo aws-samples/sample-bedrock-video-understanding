@@ -25,7 +25,7 @@ class VideoSearch extends React.Component {
             items: [],
             embedSearchItems: [],
             selectedItemId: null,
-            pageSize: 8,
+            pageSize: 50,
             mmScoreThreshold: 1.52,
             textScoreThreshold: 1.003,
             videoActiveTabId: "mmembed",
