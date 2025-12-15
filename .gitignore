@@ -29,6 +29,7 @@ pip-delete-this-directory.txt
 
 # Virtual Environments
 .env
+.env.production
 .venv
 env/
 venv/
