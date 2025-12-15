@@ -10,7 +10,7 @@ import AgentMain from "./components/agent/agentMain";
 import DataGenerationMain from "./components/dataGeneration/dataMain";
 import "./App.css";
 import { FetchPost } from "./resources/data-provider";
-import seagateLogo from "./static/Seagate_logo.svg";
+import mainLogo from "./static/aws-logo.svg";
 import bedrockLogo from "./static/bedrock_logo.png";
 
 const ITEMS = [
@@ -125,7 +125,7 @@ class App extends Component {
         {displayTopMenu && (
           <div className="topmenu">
             <div className="header-left">
-              <img src={seagateLogo} alt="Seagate" className="logo seagate-logo" />
+              <img src={mainLogo} alt="Main" className="logo main-logo" />
               <div className="title"><strong>Bedrock Video Understanding</strong></div>
             </div>
             <div className="header-right">
