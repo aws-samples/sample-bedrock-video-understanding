@@ -65,7 +65,7 @@ def lambda_handler(event, context):
             response = bedrock_converse(config=config, image_s3_bucket=s3_bucket, image_s3_key=s3_key)
 
             # Parse usage
-            if "usage" in response:
+            if response and "usage" in response:
                 input_tokens = response["usage"]["inputTokens"]
                 output_tokens = response["usage"]["outputTokens"]
                 total_tokens = response["usage"]["totalTokens"]
